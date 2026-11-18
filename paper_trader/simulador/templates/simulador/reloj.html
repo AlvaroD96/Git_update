@@ -1,0 +1,121 @@
+{% extends "simulador/base.html" %}
+{% load l10n %}
+{% block titulo %}Reloj {{ ses.simbolo }} · Simulador{% endblock %}
+{% block contenido %}
+<div class="row" style="align-items:center;margin-bottom:8px">
+  <h1 style="margin:0;flex:3">⏱️ {{ ses.simbolo }} · {{ ses.fecha|date:"l d M Y" }}</h1>
+  <div style="text-align:right;flex:2">
+    <span class="big">${{ precio|floatformat:2 }}</span>
+    {% if cambio is not None %}<span class="{% if cambio >= 0 %}ok{% else %}bad{% endif %}">{% if cambio >= 0 %}+{% endif %}{{ cambio }}%</span>{% endif %}
+    <div class="mut">{{ hora }} ET · VWAP {{ vwap }} · {% if ses.terminada %}sesión terminada{% else %}quedan {{ barras_restantes }} barras{% endif %}</div>
+  </div>
+</div>
+
+<div class="card" style="padding:8px">
+  <div class="scroll"><div style="min-width:640px">{{ grafico }}</div></div>
+  <div class="mut" style="padding:0 8px">Velas de 5 min · <span style="color:#a855f7">— VWAP</span> · líneas punteadas: rango de apertura, máximo de 20 días, y tu entrada/stop/objetivo.</div>
+</div>
+
+{% if not ses.terminada %}
+<form method="post" action="{% url 'reloj_accion' ses.pk %}" class="card" id="controles">{% csrf_token %}
+  <div class="row" style="align-items:center">
+    <button name="accion" value="avanzar1" style="margin:0" title="Tecla →">+5 min →</button>
+    <button name="accion" value="avanzar3" class="sec" style="margin:0">+15 min</button>
+    <button name="accion" value="avanzar12" class="sec" style="margin:0">+1 hora</button>
+    <button name="accion" value="senal" class="sec" style="margin:0" title="Tecla S">Hasta la próxima señal ⚡</button>
+    <button name="accion" value="final" class="sec" style="margin:0" onclick="return confirm('¿Ir al final del día?')">Hasta el cierre ⏭</button>
+  </div>
+  <p class="mut" style="margin:8px 0 0">Atajos: <b>→</b> avanza 5 minutos, <b>S</b> salta a la próxima señal.</p>
+</form>
+{% endif %}
+
+{% if pendiente %}
+  <div class="msg">Tienes una compra analizada esperando tu decisión. <a href="{% url 'detalle' pendiente.pk %}">Decidir ahora →</a></div>
+{% endif %}
+
+<div class="grid">
+  <div class="card">
+    <h2>Tu posición</h2>
+    {% for o in abiertas %}
+      <p><b>{{ o.acciones }} acciones</b> desde ${{ o.entrada }} ({{ o.hora_decision }})</p>
+      <p class="big {% if o.latente >= 0 %}ok{% else %}bad{% endif %}">{% if o.latente >= 0 %}+{% endif %}${{ o.latente|floatformat:2 }} · {{ o.r_latente }}R</p>
+      <p class="mut">Stop <span class="bad">${{ o.stop }}</span> · objetivo <span class="ok">${{ o.objetivo }}</span> · se cierra sola a las {{ o.flat_by }}</p>
+      {% if not ses.terminada %}
+      <form method="post" action="{% url 'reloj_accion' ses.pk %}">{% csrf_token %}
+        <button name="accion" value="vender" class="danger">Vender ahora a ${{ precio|floatformat:2 }}</button></form>
+      {% endif %}
+    {% empty %}
+      <p class="mut">Sin posición. Efectivo ficticio ${{ ses.cuenta.efectivo|floatformat:2 }}.</p>
+    {% endfor %}
+  </div>
+
+  {% if not ses.terminada and not pendiente %}
+  <div class="card">
+    <h2>Comprar a ${{ precio|floatformat:2 }}</h2>
+    {% for s in senales %}
+      <form method="post" action="{% url 'reloj_accion' ses.pk %}" style="border:1px solid var(--bd);border-radius:8px;padding:8px;margin-bottom:8px">{% csrf_token %}
+        <b>⚡ {{ s.nombre }}</b><div class="mut">{{ s.motivo }}</div>
+        <div class="mut">stop ${{ s.stop }} · objetivo ${{ s.objetivo }} · riesgo ${{ s.riesgo }}/acción</div>
+        <input type="hidden" name="senal" value="{{ s.estrategia }}">
+        <button name="accion" value="comprar" style="margin-top:6px">Analizar esta señal</button>
+      </form>
+    {% empty %}
+      <p class="mut">Ninguna estrategia da señal en esta barra.</p>
+    {% endfor %}
+    <details {% if not senales %}open{% endif %}>
+      <summary>Con mi propio plan</summary>
+      <form method="post" action="{% url 'reloj_accion' ses.pk %}">{% csrf_token %}
+        <div class="row">
+          <div><label>Stop</label><input name="stop" value="{{ stop_sug|unlocalize }}"></div>
+          <div><label>Objetivo</label><input name="objetivo" value="{{ obj_sug|unlocalize }}"></div>
+        </div>
+        <p class="mut">Sugerido: stop bajo el mínimo de las últimas 3 barras, objetivo {{ ses.cuenta.objetivo_r }}R.</p>
+        <button name="accion" value="comprar">Analizar compra</button>
+      </form>
+    </details>
+    <p class="mut">«Analizar» corre la máquina del tiempo, el tamaño y el riesgo con los datos hasta {{ hora }}. Después decides.</p>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <h2>Historia de tu estrategia</h2>
+    <form method="post" action="{% url 'reloj_accion' ses.pk %}" class="row">{% csrf_token %}
+      <select name="estrategia" onchange="this.form.submit()">{% for k, n in estrategias %}<option value="{{ k }}" {% if k == ses.estrategia %}selected{% endif %}>{{ n }}</option>{% endfor %}</select>
+      <input type="hidden" name="accion" value="estrategia">
+    </form>
+    {% include "simulador/_backtest.html" %}
+  </div>
+</div>
+
+<div class="grid">
+  <div class="card scroll">
+    <h2>Operaciones de esta sesión</h2>
+    {% if ops %}
+    <table>
+      <tr><th>Hora</th><th>Estrategia</th><th>Estado</th><th class="num">Entrada</th><th>Salida</th><th class="num">R</th><th class="num">P&amp;L</th></tr>
+      {% for o in ops %}
+      <tr><td><a href="{% url 'detalle' o.pk %}">{{ o.hora_decision }}</a></td><td>{{ o.estrategia }}</td>
+        <td><span class="tag {% if o.tomada %}ok{% elif o.estado == 'pendiente' %}warn{% endif %}">{{ o.get_estado_display }}</span></td>
+        <td class="num">{{ o.entrada }}</td><td class="mut">{{ o.salida_motivo }} {{ o.salida_hora }}</td>
+        <td class="num">{{ o.r_multiple|default_if_none:"" }}</td>
+        <td class="num {% if o.pnl > 0 %}ok{% elif o.pnl < 0 %}bad{% endif %}">{% if o.pnl is not None %}{% if o.estado == 'descartada' %}({{ o.pnl|floatformat:2 }}){% else %}{{ o.pnl|floatformat:2 }}{% endif %}{% endif %}</td></tr>
+      {% endfor %}
+    </table>
+    {% else %}<p class="mut">Todavía nada.</p>{% endif %}
+  </div>
+  <div class="card">
+    <h2>Registro</h2>
+    {% for e in eventos %}<div><span class="mut">{{ e.hora }}</span> {{ e.texto }}</div>{% endfor %}
+  </div>
+</div>
+
+<script>
+document.addEventListener('keydown', function (e) {
+  if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+  var f = document.getElementById('controles'); if (!f) return;
+  var v = e.key === 'ArrowRight' ? 'avanzar1' : (e.key === 's' || e.key === 'S') ? 'senal' : null;
+  if (!v) return;
+  var b = f.querySelector('button[value="' + v + '"]'); if (b) { e.preventDefault(); b.click(); }
+});
+</script>
+{% endblock %}

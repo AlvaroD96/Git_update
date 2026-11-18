@@ -20,10 +20,41 @@ Abre http://127.0.0.1:8000. No hace falta ninguna API key.
 
 ## Cómo se usa
 
-1. **Práctica (sin internet).** Elige un día pasado (o al azar). La app avanza el reloj hasta el momento exacto
-   en que se activa la ruptura del rango de apertura y corre las skills **solo con los datos hasta ese momento**:
-   - `trader-entry`: ¿rompió el rango de apertura? ¿a qué hora y precio?
-   - `trader-exit`: stop (mitad del rango) y objetivo (2R)
+### ⏱️ Modo reloj (recomendado)
+
+Revives un día pasado **barra por barra**, como si estuvieras frente a la pantalla:
+
+- Empieza a las 9:45 con las 3 barras del rango de apertura. Avanzas 5 min (tecla **→**), 15 min, 1 hora,
+  **hasta la próxima señal** (tecla **S**) o hasta el cierre.
+- El gráfico muestra velas de 5 minutos, el VWAP, el rango de apertura, el máximo de 20 días y tu entrada/stop/objetivo.
+- Cuando una estrategia da señal, aparece con su stop y objetivo. Puedes **analizarla** o comprar con **tu propio plan**
+  (stop y objetivo que tú eliges). «Analizar» corre la máquina del tiempo, el tamaño y el riesgo con los datos hasta ese
+  minuto; después tomas o descartas.
+- Con la posición abierta ves la ganancia/pérdida latente en dólares y en R. Cada barra nueva revisa el stop y el
+  objetivo; puedes **vender a mano**; a las 15:55 se cierra sola.
+- Al terminar el día, las compras que descartaste se resuelven igual (hipotéticamente) para comparar.
+
+### Estrategias
+
+| clave | estrategia | señal (solo compras, una por día) | stop |
+| --- | --- | --- | --- |
+| `orb` | Ruptura del rango de apertura | primer cierre sobre el máximo de los primeros 15 min (usa las skills `trader-entry` y `trader-exit`) | mitad del rango |
+| `nivel20` | Ruptura del máximo de 20 días | primer cierre sobre el máximo de las 20 sesiones anteriores | mínimo de las últimas 3 barras |
+| `vwap` | Recupera el VWAP | cierra sobre el VWAP después de 3 barras debajo (desde las 10:00) | mínimo de las últimas 4 barras |
+| `bandera` | Bandera alcista | subida de 1.5 %+, consolidación de 3–8 barras que retrocede menos de la mitad, cierre sobre la punta | mínimo de la bandera |
+| `rebote` | Rebote de sobreventa | día que cayó 1.5 %+, RSI(14) de 5 min cruza 30 hacia arriba con vela verde | mínimo del día |
+
+Objetivo: tu R (2R por defecto). No hay entradas antes de las 9:45 ni después de las 15:30, y se descartan stops a
+menos de 0.2 % o a más de 4 % de la entrada. Cada estrategia muestra su **historia**: la misma regla en las sesiones
+anteriores al día que practicas (nunca el mismo día). Las reglas están en `simulador/estrategias.py`: agregar una
+es escribir una función y sumarla al diccionario `ESTRATEGIAS`.
+
+### 🎯 Práctica rápida
+
+1. Elige una estrategia y un día pasado (o al azar). La app avanza el reloj hasta el momento exacto
+   de la primera señal y corre las skills **solo con los datos hasta ese momento**:
+   - la entrada: `trader-entry` para `orb`, o la regla de la estrategia
+   - el plan: `trader-exit` para `orb`, o el stop de la estrategia y tu R (escrito en `trader/plan.json` igual que `trader-exit`)
    - `trader-timemachine`: 5,000 sesiones simuladas + la misma regla en los días anteriores
    - `trader-budget`: cuántas acciones según tu pérdida máxima por operación
    - `trader-risk`: PASS o BLOCK contra tus reglas (más el límite diario que lleva la app)
@@ -32,6 +63,8 @@ Abre http://127.0.0.1:8000. No hace falta ninguna API key.
    Si la descartaste, igual te muestra qué *habría* pasado.
 4. El panel compara tus operaciones tomadas contra las descartadas (P&L, % ganadoras, R promedio).
    Así ves si tu criterio agrega valor sobre seguir la regla a ciegas.
+
+### 📡 En vivo
 
 **En vivo** (con internet, mercado abierto después de las 9:50 ET): escribes un símbolo y corre lo mismo con datos de
 Yahoo, más `trader-news`. El botón *Actualizar* revisa más tarde si tocó el stop o el objetivo. El **Escáner**
@@ -69,7 +102,10 @@ Cada archivo de 60 días da unos 39 días de práctica (la máquina del tiempo n
 
 ## Límites
 
-- Solo largos (compras), solo la ruptura del rango de apertura (lo que soportan `trader-entry` y `trader-exit`).
+- Solo compras (largos), en barras de 5 minutos.
+- La sección «Historia» de `trader-timemachine` solo conoce la ruptura del rango de apertura; para las otras
+  estrategias la app muestra su propio backtest.
+- El modo reloj usa los datos guardados (práctica); en vivo se usa el análisis por símbolo.
 - Los textos que generan las skills están en inglés.
 - La simulación no tiene comisiones ni slippage; en real los stops pueden llenarse peor.
 - Los datos de Yahoo son gratis, no oficiales y con retraso.

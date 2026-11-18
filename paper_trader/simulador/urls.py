@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import reloj, views
 
 urlpatterns = [
     path("", views.panel, name="panel"),
@@ -8,6 +8,9 @@ urlpatterns = [
     path("operacion/<int:pk>/", views.detalle, name="detalle"),
     path("operacion/<int:pk>/decidir/", views.decidir, name="decidir"),
     path("operacion/<int:pk>/resolver/", views.resolver, name="resolver"),
+    path("reloj/nuevo/", reloj.nuevo, name="reloj_nuevo"),
+    path("reloj/<int:pk>/", reloj.ver, name="reloj"),
+    path("reloj/<int:pk>/accion/", reloj.accion, name="reloj_accion"),
     path("escaner/", views.escaner, name="escaner"),
     path("reiniciar/", views.reiniciar, name="reiniciar"),
     path("reglas/", views.reglas, name="reglas"),

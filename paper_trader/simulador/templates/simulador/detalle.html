@@ -4,17 +4,32 @@
 <h1>{{ op.simbolo }} · {{ op.fecha_sesion|date:"l d M Y" }} {% if op.hora_decision %}· {{ op.hora_decision }} ET{% endif %}
   <span class="tag">{{ op.get_modo_display }}</span> <span class="tag">{{ op.get_estado_display }}</span></h1>
 
+{% if op.sesion_id %}<p><a href="{% url 'reloj' op.sesion_id %}">← Volver al reloj</a></p>{% endif %}
+<p class="mut">Estrategia: <b>{{ nombre_estrategia }}</b></p>
 {% for e in op.errores %}<div class="msg error">{{ e }}</div>{% endfor %}
 
 {% if op.estado == 'sin_senal' %}
   <div class="card"><h2>Sin señal de entrada</h2>
     <p>{{ entry.reason|default:"El precio no cerró sobre el rango de apertura." }}</p>
+    {% if bt %}{% include "simulador/_backtest.html" %}{% endif %}
     {% if entry.opening_range %}<p class="mut">Rango de apertura {{ entry.opening_range.low }} – {{ entry.opening_range.high }}.</p>{% endif %}
     <p class="mut">Esto también es una decisión: no operar. <a href="{% url 'panel' %}">Volver</a></p></div>
 {% endif %}
 
-{% if entry and op.entrada %}
+{% if op.entrada %}
 <div class="grid">
+  {% if senal %}
+  <div class="card">
+    <h2>1 · Entrada <span class="mut">{{ senal.nombre }}</span></h2>
+    <p>{{ senal.motivo }}.</p>
+    <table>
+      <tr><td>Hora</td><td class="num">{{ senal.hora }} ET</td></tr>
+      <tr><td>Precio de entrada</td><td class="num">${{ senal.entrada }}</td></tr>
+      <tr><td>Riesgo por acción</td><td class="num">${{ senal.riesgo }}</td></tr>
+    </table>
+    {% if bt %}<h3>Historia de la estrategia</h3>{% include "simulador/_backtest.html" %}{% endif %}
+  </div>
+  {% else %}
   <div class="card">
     <h2>1 · Entrada <span class="mut">trader-entry</span></h2>
     <p>{{ entry.reason }}.</p>
@@ -26,8 +41,9 @@
       {% if op.modo == "vivo" %}<tr><td>Cierre anterior</td><td class="num">${{ entry.prev_close }}</td></tr>{% endif %}
     </table>
   </div>
+  {% endif %}
   <div class="card">
-    <h2>2 · Plan de salida <span class="mut">trader-exit</span></h2>
+    <h2>2 · Plan de salida <span class="mut">{% if senal %}plan.json para las skills{% else %}trader-exit{% endif %}</span></h2>
     <table>
       <tr><td>Entrada</td><td class="num"><b>${{ plan.entry }}</b></td></tr>
       <tr><td>Stop ({{ plan.stop_label }})</td><td class="num bad">${{ plan.stop }}</td></tr>
@@ -43,6 +59,7 @@
   <h2>3 · Máquina del tiempo <span class="mut">trader-timemachine</span></h2>
   {% if tm %}
   <p><b>{{ tm.verdict }}</b></p>
+  {% if senal %}<p class="mut">La parte “Historia” de la skill solo sabe de la ruptura del rango de apertura; para esta estrategia mira su propia historia arriba.</p>{% endif %}
   <div class="bar" title="objetivo / ninguno / stop">
     <span style="width:{% widthratio tm.mc.p_target 1 100 %}%;background:var(--ok)"></span>
     <span style="width:{% widthratio tm.mc.p_neither 1 100 %}%;background:var(--mut)"></span>
@@ -128,7 +145,8 @@
     <p class="mut">La máquina del tiempo daba {% widthratio op.p_objetivo 1 100 %}% al objetivo y {% widthratio op.p_stop 1 100 %}% al stop. Un resultado no prueba nada: mira el R promedio de muchas decisiones.</p>
   {% else %}
     <p class="mut">{{ op.salida_motivo|default:"Todavía sin resultado." }}</p>
-    <form method="post" action="{% url 'resolver' op.pk %}">{% csrf_token %}<button>Actualizar con las barras de Yahoo</button></form>
+    {% if op.sesion_id %}<p><a href="{% url 'reloj' op.sesion_id %}">Sigue la operación en el reloj →</a></p>
+    {% else %}<form method="post" action="{% url 'resolver' op.pk %}">{% csrf_token %}<button>Actualizar con las barras de Yahoo</button></form>{% endif %}
   {% endif %}
 </div>
 {% endif %}

@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from . import barras, pipeline
+from . import estrategias as E
 from .models import Cuenta, Operacion
 
 
@@ -61,6 +62,8 @@ def panel(request):
         "stats": _estadisticas(cuenta),
         "demo": demo,
         "fechas": {d["simbolo"]: fechas_practica(d["ruta"]) for d in demo},
+        "estrategias": E.OPCIONES,
+        "sesiones": cuenta.sesiones.all()[:8],
     })
 
 
@@ -69,6 +72,8 @@ def nueva(request):
     cuenta = cuenta_actual()
     modo = request.POST.get("modo", Operacion.PRACTICA)
     op = Operacion(cuenta=cuenta, modo=modo)
+    est = request.POST.get("estrategia", "orb")
+    op.estrategia = est if est in E.ESTRATEGIAS else "orb"
     if modo == Operacion.PRACTICA:
         demo = {d["simbolo"]: d for d in archivos_demo()}
         sim = request.POST.get("simbolo_demo", "")
@@ -98,6 +103,7 @@ def detalle(request, pk):
         "entry": r.get("entry"), "plan": r.get("exit"), "tm": r.get("timemachine"),
         "sizing": (r.get("budget") or {}).get("sizing"), "orden": ((r.get("budget") or {}).get("orders") or [None])[0],
         "riesgo": ((r.get("risk") or {}).get("results") or [None])[0], "news": r.get("news"),
+        "senal": r.get("senal"), "bt": r.get("backtest"), "nombre_estrategia": E.nombre(op.estrategia),
     })
 
 
@@ -124,6 +130,8 @@ def decidir(request, pk):
     else:
         op.estado = Operacion.DESCARTADA
     op.save()
+    if op.sesion_id:  # modo reloj: el resultado se va viendo al avanzar las barras
+        return redirect("reloj", pk=op.sesion_id)
     if op.modo == Operacion.PRACTICA:  # en práctica el resto del día ya existe: lo mostramos de inmediato
         return resolver(request, pk)
     return redirect("detalle", pk=pk)
@@ -139,10 +147,6 @@ def resolver(request, pk):
     except Exception as e:  # sin internet, archivo roto...
         messages.error(request, f"No pude obtener las barras: {e}")
         return redirect("detalle", pk=pk)
-    if op.resuelta and op.estado == Operacion.ABIERTA:
-        op.cuenta.efectivo += op.salida_precio * op.acciones
-        op.cuenta.save()
-        op.estado = Operacion.CERRADA
     op.save()
     return redirect("detalle", pk=pk)
 
@@ -151,6 +155,7 @@ def resolver(request, pk):
 def reiniciar(request):
     cuenta = cuenta_actual()
     cuenta.operaciones.all().delete()
+    cuenta.sesiones.all().delete()
     cuenta.efectivo = cuenta.saldo_inicial
     cuenta.save()
     messages.success(request, "Cuenta reiniciada.")
@@ -204,20 +209,35 @@ def exportar_ordenes(request):
                          "orders": ordenes}, json_dumps_params={"indent": 2, "ensure_ascii": False})
 
 
+def numero(texto):
+    """Acepta 1234.5, 1234,5 y 1.234,5."""
+    t = texto.strip().replace(" ", "")
+    if "," in t:
+        t = t.replace(".", "").replace(",", ".")
+    return float(t)
+
+
 @require_POST
 def reglas(request):
     cuenta = cuenta_actual()
+    try:
+        _guardar_reglas(request, cuenta)
+    except ValueError:
+        messages.error(request, "Revisa los números: algún campo no es válido.")
+    return redirect("panel")
+
+
+def _guardar_reglas(request, cuenta):
     for campo in ("max_perdida_operacion", "max_perdida_diaria", "min_reward_risk", "objetivo_r"):
         if request.POST.get(campo):
-            setattr(cuenta, campo, float(request.POST[campo]))
+            setattr(cuenta, campo, numero(request.POST[campo]))
     if request.POST.get("max_operaciones_dia"):
-        cuenta.max_operaciones_dia = int(request.POST["max_operaciones_dia"])
+        cuenta.max_operaciones_dia = int(numero(request.POST["max_operaciones_dia"]))
     if request.POST.get("regla_stop"):
         cuenta.regla_stop = request.POST["regla_stop"].strip()
     if request.POST.get("saldo_inicial"):
-        nuevo = float(request.POST["saldo_inicial"])
+        nuevo = numero(request.POST["saldo_inicial"])
         cuenta.efectivo += nuevo - cuenta.saldo_inicial
         cuenta.saldo_inicial = nuevo
     cuenta.save()
     messages.success(request, "Reglas guardadas. Se aplican a los próximos análisis.")
-    return redirect("panel")

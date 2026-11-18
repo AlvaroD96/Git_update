@@ -42,6 +42,29 @@ class Cuenta(models.Model):
         return self.efectivo + sum(o.costo for o in self.abiertas)
 
 
+class SesionReloj(models.Model):
+    """Una sesión de práctica que avanza barra por barra (modo reloj)."""
+
+    cuenta = models.ForeignKey(Cuenta, on_delete=models.CASCADE, related_name="sesiones")
+    simbolo = models.CharField(max_length=10)
+    archivo_datos = models.CharField(max_length=300)
+    fecha = models.DateField()
+    indice = models.IntegerField(default=3, help_text="cuántas barras de 5 min ya se ven")
+    estrategia = models.CharField(max_length=12, default="orb")
+    terminada = models.BooleanField(default=False)
+    eventos = models.JSONField(default=list)
+    creada = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-creada"]
+
+    def __str__(self):
+        return f"Reloj {self.simbolo} {self.fecha}"
+
+    def log(self, hora, texto):
+        self.eventos.append({"hora": hora, "texto": texto})
+
+
 class Operacion(models.Model):
     PRACTICA, VIVO = "practica", "vivo"
     MODOS = [(PRACTICA, "Práctica (datos guardados)"), (VIVO, "En vivo (Yahoo, internet)")]
@@ -61,6 +84,8 @@ class Operacion(models.Model):
     modo = models.CharField(max_length=10, choices=MODOS, default=PRACTICA)
     simbolo = models.CharField(max_length=10)
     archivo_datos = models.CharField(max_length=300, blank=True)
+    estrategia = models.CharField(max_length=12, default="orb")
+    sesion = models.ForeignKey(SesionReloj, null=True, blank=True, on_delete=models.CASCADE, related_name="operaciones")
     fecha_sesion = models.DateField(null=True, blank=True)
     hora_decision = models.CharField(max_length=5, blank=True)
     estado = models.CharField(max_length=12, choices=ESTADOS, default=PENDIENTE)

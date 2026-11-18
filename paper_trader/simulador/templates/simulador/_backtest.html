@@ -1,0 +1,15 @@
+{% if bt %}
+<p><b>{{ bt.nombre }}</b>: {{ bt.senales }} señales en las {{ bt.sesiones }} sesiones anteriores.</p>
+{% if bt.senales %}
+<table>
+  <tr><td>Objetivo / stop / cierre</td><td class="num">{{ bt.objetivo }} / {{ bt.stop }} / {{ bt.cierre }}</td></tr>
+  <tr><td>Ganadoras</td><td class="num">{{ bt.pct }}%</td></tr>
+  <tr><td>R promedio</td><td class="num {% if bt.r_prom > 0 %}ok{% elif bt.r_prom < 0 %}bad{% endif %}">{{ bt.r_prom }}</td></tr>
+  <tr><td>R total</td><td class="num">{{ bt.r_total }}</td></tr>
+</table>
+<details><summary>Últimas señales</summary>
+  <table>{% for t in bt.trades %}<tr><td>{{ t.fecha }} {{ t.hora }}</td><td class="num">{{ t.entrada }} → {{ t.salida }}</td><td class="mut">{{ t.motivo }}</td><td class="num {% if t.R > 0 %}ok{% else %}bad{% endif %}">{{ t.R }}R</td></tr>{% endfor %}</table>
+</details>
+{% endif %}
+<p class="mut">Solo usa días anteriores al que practicas. Con tan pocas señales el número es ruidoso: no es una garantía.</p>
+{% endif %}
