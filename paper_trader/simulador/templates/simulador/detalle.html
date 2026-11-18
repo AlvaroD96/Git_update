@@ -1,0 +1,140 @@
+{% extends "simulador/base.html" %}
+{% block titulo %}{{ op.simbolo }} · Simulador{% endblock %}
+{% block contenido %}
+<h1>{{ op.simbolo }} · {{ op.fecha_sesion|date:"l d M Y" }} {% if op.hora_decision %}· {{ op.hora_decision }} ET{% endif %}
+  <span class="tag">{{ op.get_modo_display }}</span> <span class="tag">{{ op.get_estado_display }}</span></h1>
+
+{% for e in op.errores %}<div class="msg error">{{ e }}</div>{% endfor %}
+
+{% if op.estado == 'sin_senal' %}
+  <div class="card"><h2>Sin señal de entrada</h2>
+    <p>{{ entry.reason|default:"El precio no cerró sobre el rango de apertura." }}</p>
+    {% if entry.opening_range %}<p class="mut">Rango de apertura {{ entry.opening_range.low }} – {{ entry.opening_range.high }}.</p>{% endif %}
+    <p class="mut">Esto también es una decisión: no operar. <a href="{% url 'panel' %}">Volver</a></p></div>
+{% endif %}
+
+{% if entry and op.entrada %}
+<div class="grid">
+  <div class="card">
+    <h2>1 · Entrada <span class="mut">trader-entry</span></h2>
+    <p>{{ entry.reason }}.</p>
+    <table>
+      <tr><td>Rango de apertura</td><td class="num">{{ entry.opening_range.low }} – {{ entry.opening_range.high }}</td></tr>
+      <tr><td>Gatillo</td><td class="num">{{ entry.trigger.time }} a ${{ entry.trigger.price }}</td></tr>
+      <tr><td>Sobre el máximo</td><td class="num">+{{ entry.trigger.pct_over }}%</td></tr>
+      <tr><td>Volumen vs. rango</td><td class="num">{{ entry.trigger.volume_x }}×</td></tr>
+      {% if op.modo == "vivo" %}<tr><td>Cierre anterior</td><td class="num">${{ entry.prev_close }}</td></tr>{% endif %}
+    </table>
+  </div>
+  <div class="card">
+    <h2>2 · Plan de salida <span class="mut">trader-exit</span></h2>
+    <table>
+      <tr><td>Entrada</td><td class="num"><b>${{ plan.entry }}</b></td></tr>
+      <tr><td>Stop ({{ plan.stop_label }})</td><td class="num bad">${{ plan.stop }}</td></tr>
+      <tr><td>Objetivo ({{ plan.target_label }})</td><td class="num ok">${{ plan.target }}</td></tr>
+      <tr><td>Riesgo por acción</td><td class="num">${{ plan.risk_per_share }}</td></tr>
+      <tr><td>Cerrar a más tardar</td><td class="num">{{ plan.flat_by }} ET</td></tr>
+    </table>
+    {% for w in plan.warnings %}<p class="mut">⚠️ {{ w }}</p>{% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2>3 · Máquina del tiempo <span class="mut">trader-timemachine</span></h2>
+  {% if tm %}
+  <p><b>{{ tm.verdict }}</b></p>
+  <div class="bar" title="objetivo / ninguno / stop">
+    <span style="width:{% widthratio tm.mc.p_target 1 100 %}%;background:var(--ok)"></span>
+    <span style="width:{% widthratio tm.mc.p_neither 1 100 %}%;background:var(--mut)"></span>
+    <span style="width:{% widthratio tm.mc.p_stop 1 100 %}%;background:var(--bad)"></span>
+  </div>
+  <div class="grid" style="margin-top:10px">
+    <table>
+      <tr><th colspan="2">{{ tm.mc.replays }} sesiones simuladas</th></tr>
+      <tr><td>Toca el objetivo primero</td><td class="num ok">{% widthratio tm.mc.p_target 1 100 %}%</td></tr>
+      <tr><td>Toca el stop primero</td><td class="num bad">{% widthratio tm.mc.p_stop 1 100 %}%</td></tr>
+      <tr><td>Ninguno al cierre</td><td class="num">{% widthratio tm.mc.p_neither 1 100 %}%</td></tr>
+      <tr><td>Cierre mediano (5%–95%)</td><td class="num">${{ tm.mc.median_close }} ({{ tm.mc.p5_close }}–{{ tm.mc.p95_close }})</td></tr>
+      <tr><td>R promedio</td><td class="num">{{ tm.mc.avg_R }}</td></tr>
+    </table>
+    <table>
+      <tr><th colspan="2">Historia: la misma regla en {{ tm.history.sessions }} sesiones previas</th></tr>
+      <tr><td>Se activó</td><td class="num">{{ tm.history.triggered }} veces</td></tr>
+      <tr><td>Objetivo / stop / cierre</td><td class="num">{{ tm.history.target }} / {{ tm.history.stop }} / {{ tm.history.close }}</td></tr>
+      <tr><td>Terminó en verde</td><td class="num">{{ tm.history.green }}</td></tr>
+      <tr><td>R promedio</td><td class="num">{{ tm.history.avg_R }}</td></tr>
+    </table>
+  </div>
+  {% for n in tm.verdict_notes %}<p class="mut">{{ n }}</p>{% endfor %}
+  {% else %}<p class="mut">No se pudo correr (ver errores arriba).</p>{% endif %}
+</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>4 · Tamaño <span class="mut">trader-budget</span></h2>
+    {% if sizing %}
+    <p><b>{{ sizing.qty }} acciones</b> · costo ${{ sizing.cost|floatformat:2 }} · pérdida máx. en el stop <span class="bad">${{ sizing.max_loss|floatformat:2 }}</span></p>
+    <table>{% for l in sizing.limits %}
+      <tr><td>{% if l.binds %}<b>{{ l.name }}</b> ← decide{% else %}{{ l.name }}{% endif %}</td><td class="num">{{ l.shares }}</td><td class="mut">{{ l.how }}</td></tr>
+    {% endfor %}</table>
+    {% if sizing.refusal %}<p class="bad">{{ sizing.refusal }}</p>{% endif %}
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>5 · Riesgo <span class="mut">trader-risk</span></h2>
+    {% if riesgo %}
+    <p><span class="tag {% if op.veredicto_riesgo == 'PASS' %}ok{% else %}bad{% endif %}">{{ op.veredicto_riesgo }}</span></p>
+    {% for r in riesgo.reasons %}<p class="bad">✖ {{ r }}</p>{% endfor %}
+    {% for w in riesgo.warnings %}<p class="mut">⚠️ {{ w }}</p>{% endfor %}
+    {% for i in riesgo.info %}<p class="mut">✓ {{ i }}</p>{% endfor %}
+    {% endif %}
+  </div>
+</div>
+
+{% if news %}
+<div class="card">
+  <h2>Noticias <span class="mut">trader-news</span></h2>
+  {% for it in news.items %}
+    <p>{% if it.important %}❗{% endif %} <a href="{{ it.link }}" target="_blank" rel="noopener">{{ it.title }}</a>
+      <span class="mut">{{ it.source }} · {{ it.time }} {% for t in it.tags %}<span class="tag">{{ t }}</span>{% endfor %}</span></p>
+  {% empty %}<p class="mut">Nada nuevo en las últimas 24 horas.</p>{% endfor %}
+</div>
+{% endif %}
+
+{% if op.estado == 'pendiente' %}
+<form class="card" method="post" action="{% url 'decidir' op.pk %}">{% csrf_token %}
+  <h2>🧭 Tu decisión</h2>
+  <p class="mut">Escribe por qué. Ese razonamiento es lo más valioso del diario: después lo comparas con el resultado.</p>
+  <label>¿Por qué la tomas o la descartas?</label>
+  <textarea name="nota" rows="3" placeholder="Ej.: volumen bajo en el gatillo y la máquina del tiempo da 4% al objetivo; paso."></textarea>
+  {% if op.veredicto_riesgo != 'PASS' %}
+    <label><input type="checkbox" name="ignorar_riesgo" value="1" style="width:auto"> Simularla igual aunque trader-risk la bloqueó (en real no pasaría)</label>
+  {% endif %}
+  <div class="row">
+    <button name="accion" value="tomar">✅ Tomar ({{ op.acciones|default:0 }} acciones, dinero ficticio)</button>
+    <button name="accion" value="descartar" class="sec">⏭️ Descartar</button>
+  </div>
+</form>
+{% endif %}
+{% endif %}
+
+{% if op.decidida_en %}
+<div class="card">
+  <h2>Resultado {% if op.estado == 'descartada' %}<span class="mut">(hipotético: la descartaste)</span>{% endif %}</h2>
+  {% if op.nota_decision %}<p>Tu razón: <i>“{{ op.nota_decision }}”</i></p>{% endif %}
+  {% if op.resuelta %}
+    <p class="big {% if op.pnl > 0 %}ok{% elif op.pnl < 0 %}bad{% endif %}">{% if op.pnl > 0 %}+{% endif %}${{ op.pnl|floatformat:2 }} · {{ op.r_multiple }}R</p>
+    <p>Salida por <b>{{ op.salida_motivo }}</b> a ${{ op.salida_precio }} a las {{ op.salida_hora }} ET ({{ op.acciones }} acciones, entrada ${{ op.entrada }}).</p>
+    <p class="mut">La máquina del tiempo daba {% widthratio op.p_objetivo 1 100 %}% al objetivo y {% widthratio op.p_stop 1 100 %}% al stop. Un resultado no prueba nada: mira el R promedio de muchas decisiones.</p>
+  {% else %}
+    <p class="mut">{{ op.salida_motivo|default:"Todavía sin resultado." }}</p>
+    <form method="post" action="{% url 'resolver' op.pk %}">{% csrf_token %}<button>Actualizar con las barras de Yahoo</button></form>
+  {% endif %}
+</div>
+{% endif %}
+
+<details class="card"><summary>Ver JSON de las skills (para revisarlo con Claude)</summary>
+  <p class="mut">Archivos en <code>workspaces/op{{ op.pk }}/trader/</code></p>
+  <pre>{{ op.resultados|pprint }}</pre>
+</details>
+{% endblock %}

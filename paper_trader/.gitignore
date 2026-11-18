@@ -1,0 +1,4 @@
+db.sqlite3
+workspaces/
+__pycache__/
+*.pyc

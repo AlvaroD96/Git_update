@@ -1,0 +1,102 @@
+{% extends "simulador/base.html" %}
+{% block contenido %}
+<div class="grid">
+  <div class="card">
+    <div class="mut">Capital ficticio ({{ cuenta.nombre }})</div>
+    <div class="big">${{ cuenta.capital|floatformat:2 }}</div>
+    <div class="mut">Efectivo ${{ cuenta.efectivo|floatformat:2 }} · inicial ${{ cuenta.saldo_inicial|floatformat:2 }}</div>
+  </div>
+  <div class="card">
+    <div class="mut">Operaciones que tomaste (cerradas)</div>
+    {% if stats.tomadas %}
+      <div class="big {% if stats.tomadas.pnl >= 0 %}ok{% else %}bad{% endif %}">${{ stats.tomadas.pnl|floatformat:2 }}</div>
+      <div class="mut">{{ stats.tomadas.n }} operaciones · {{ stats.tomadas.pct }}% ganadoras · R promedio {{ stats.tomadas.r_prom }}</div>
+    {% else %}<div class="mut">Todavía ninguna.</div>{% endif %}
+  </div>
+  <div class="card">
+    <div class="mut">Las que descartaste (qué habría pasado)</div>
+    {% if stats.descartadas %}
+      <div class="big">${{ stats.descartadas.pnl|floatformat:2 }}</div>
+      <div class="mut">{{ stats.descartadas.n }} operaciones · {{ stats.descartadas.pct }}% habrían ganado · R promedio {{ stats.descartadas.r_prom }}</div>
+    {% else %}<div class="mut">Todavía ninguna.</div>{% endif %}
+  </div>
+</div>
+
+<div class="grid">
+  <form class="card" method="post" action="{% url 'nueva' %}">{% csrf_token %}
+    <h2>🎯 Práctica con datos guardados</h2>
+    <p class="mut">Elige un día pasado. La app corre las skills <b>justo en el momento del gatillo</b>, sin mirar el futuro.
+      Tú decides; después te muestra cómo terminó el día.</p>
+    <input type="hidden" name="modo" value="practica">
+    {% if demo %}
+      <label>Símbolo</label>
+      <select name="simbolo_demo" id="sim">{% for d in demo %}<option value="{{ d.simbolo }}">{{ d.simbolo }} ({{ d.nombre }})</option>{% endfor %}</select>
+      <label>Día de la sesión</label>
+      <select name="fecha">
+        <option value="">🎲 Al azar (recomendado: no sabes qué pasó)</option>
+        {% for sim, fs in fechas.items %}{% for f in fs %}<option value="{{ f|date:'Y-m-d' }}">{{ sim }} · {{ f|date:'D d M Y' }}</option>{% endfor %}{% endfor %}
+      </select>
+      <button>Analizar</button>
+    {% else %}
+      <p class="mut">No hay archivos en <code>datos_demo/</code>. Corre <code>python manage.py descargar_datos TSLA</code>.</p>
+    {% endif %}
+  </form>
+
+  <form class="card" method="post" action="{% url 'nueva' %}">{% csrf_token %}
+    <h2>📡 En vivo (necesita internet)</h2>
+    <p class="mut">Con el mercado abierto (después de las 9:50 ET). Corre entrada, salida, máquina del tiempo, tamaño, riesgo y noticias con datos de Yahoo.</p>
+    <input type="hidden" name="modo" value="vivo">
+    <label>Símbolo</label>
+    <input name="simbolo" placeholder="TSLA" required>
+    <button>Analizar ahora</button>
+    <p class="mut">Para el escáner de todo el mercado ve a <a href="{% url 'escaner' %}">Escáner</a>.</p>
+  </form>
+</div>
+
+<div class="card scroll">
+  <h2>Diario de decisiones</h2>
+  {% if ops %}
+  <table>
+    <tr><th>#</th><th>Símbolo</th><th>Sesión</th><th>Modo</th><th>Estado</th><th class="num">Acciones</th>
+        <th class="num">P(objetivo)</th><th>Riesgo</th><th>Resultado</th><th class="num">R</th><th class="num">P&amp;L</th></tr>
+    {% for o in ops %}
+    <tr>
+      <td><a href="{% url 'detalle' o.pk %}">{{ o.pk }}</a></td>
+      <td><b>{{ o.simbolo }}</b></td>
+      <td>{{ o.fecha_sesion|date:"d M" }} {{ o.hora_decision }}</td>
+      <td class="mut">{{ o.modo }}</td>
+      <td><span class="tag {% if o.estado == 'cerrada' or o.estado == 'abierta' %}ok{% elif o.estado == 'error' %}bad{% elif o.estado == 'pendiente' %}warn{% endif %}">{{ o.get_estado_display }}</span></td>
+      <td class="num">{{ o.acciones|default:"" }}</td>
+      <td class="num">{% if o.p_objetivo is not None %}{% widthratio o.p_objetivo 1 100 %}%{% endif %}</td>
+      <td>{% if o.veredicto_riesgo %}<span class="tag {% if o.veredicto_riesgo == 'PASS' %}ok{% else %}bad{% endif %}">{{ o.veredicto_riesgo }}</span>{% endif %}</td>
+      <td class="mut">{{ o.salida_motivo }}</td>
+      <td class="num">{{ o.r_multiple|default_if_none:"" }}</td>
+      <td class="num {% if o.pnl > 0 %}ok{% elif o.pnl < 0 %}bad{% endif %}">{% if o.pnl is not None %}{% if o.estado == 'descartada' %}<span class="mut">({{ o.pnl|floatformat:2 }})</span>{% else %}{{ o.pnl|floatformat:2 }}{% endif %}{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  <p class="mut">El P&amp;L entre paréntesis es hipotético: operaciones que descartaste.</p>
+  {% else %}<p class="mut">Vacío. Empieza con una práctica.</p>{% endif %}
+</div>
+
+<details class="card">
+  <summary>⚙️ Reglas de riesgo y cuenta</summary>
+  <form method="post" action="{% url 'reglas' %}">{% csrf_token %}
+    <div class="row">
+      <div><label>Saldo inicial (USD)</label><input name="saldo_inicial" value="{{ cuenta.saldo_inicial|floatformat:2 }}"></div>
+      <div><label>Pérdida máx. por operación</label><input name="max_perdida_operacion" value="{{ cuenta.max_perdida_operacion }}"></div>
+      <div><label>Pérdida máx. diaria</label><input name="max_perdida_diaria" value="{{ cuenta.max_perdida_diaria }}"></div>
+      <div><label>Operaciones por día</label><input name="max_operaciones_dia" value="{{ cuenta.max_operaciones_dia }}"></div>
+    </div>
+    <div class="row">
+      <div><label>Reward:risk mínimo</label><input name="min_reward_risk" value="{{ cuenta.min_reward_risk }}"></div>
+      <div><label>Objetivo (en R)</label><input name="objetivo_r" value="{{ cuenta.objetivo_r }}"></div>
+      <div><label>Regla de stop (or-mid, or-low, atr:1.5, 1%)</label><input name="regla_stop" value="{{ cuenta.regla_stop }}"></div>
+    </div>
+    <button>Guardar reglas</button>
+  </form>
+  <form method="post" action="{% url 'reiniciar' %}" onsubmit="return confirm('¿Borrar todas las operaciones y volver al saldo inicial?')">{% csrf_token %}
+    <button class="danger">Reiniciar cuenta</button>
+  </form>
+</details>
+{% endblock %}

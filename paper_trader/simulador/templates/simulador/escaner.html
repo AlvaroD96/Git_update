@@ -1,0 +1,50 @@
+{% extends "simulador/base.html" %}
+{% block titulo %}Escáner · Simulador{% endblock %}
+{% block contenido %}
+<h1>Escáner <span class="mut">trader-scanner</span></h1>
+<div class="grid">
+  <form class="card" method="post">{% csrf_token %}
+    <h2>Demo (sin internet)</h2>
+    <p class="mut">Rupturas del rango de apertura el lunes 19 oct 2026 en 234 acciones guardadas.</p>
+    <input type="hidden" name="modo" value="demo">
+    <label>Cortar el reloj a (ET)</label>
+    <select name="hora">
+      <option>09:50</option><option>10:00</option><option selected>10:15</option></select>
+    <button>Escanear demo</button>
+  </form>
+  <form class="card" method="post">{% csrf_token %}
+    <h2>En vivo</h2>
+    <p class="mut"><b>daily</b>: antes de la apertura (cierres diarios). <b>orb</b>: después de las 9:50 ET.
+      Todo el mercado tarda 2–4 minutos; con símbolos es rápido.</p>
+    <label>Tipo</label>
+    <select name="modo"><option value="daily">daily (pre-apertura)</option><option value="orb">orb (rango de apertura)</option></select>
+    <label>Símbolos (opcional, separados por coma)</label>
+    <input name="simbolos" placeholder="TSLA,NVDA,AMD">
+    <p class="mut">Para todo el mercado primero corre una vez: <code>python ../.claude/skills/trader-scanner/scan.py universe</code> dentro de <code>workspaces/escaner/</code>.</p>
+    <button>Escanear</button>
+  </form>
+</div>
+
+{% if error %}<div class="msg error">{{ error }}</div>{% endif %}
+{% if resultado %}
+<div class="card scroll">
+  <h2>{{ resultado.hits|length }} gráficos cumplieron una regla</h2>
+  <p class="mut">{{ resultado.mode }} · {{ resultado.as_of }} · escaneados {{ resultado.scanned }} · fallaron {{ resultado.failed }}.
+    Una lista de gráficos que cumplen una regla, no una lista de compras.</p>
+  <table>
+    <tr><th>Símbolo</th><th>Setup / hora</th><th class="num">Precio</th><th>Detalle</th><th></th></tr>
+    {% for h in resultado.hits %}
+    <tr>
+      <td><b>{{ h.symbol }}</b></td>
+      <td>{{ h.setups|join:", " }} {% if h.at %}· {{ h.at }}{% endif %}</td>
+      <td class="num">{{ h.price }}</td>
+      <td class="mut">{% if h.or_high %}rango {{ h.or_low }}–{{ h.or_high }} · +{{ h.pct_over }}%{% endif %}</td>
+      <td>{% if modo != 'demo' %}
+        <form method="post" action="{% url 'nueva' %}">{% csrf_token %}<input type="hidden" name="modo" value="vivo"><input type="hidden" name="simbolo" value="{{ h.symbol }}"><button class="sec" style="margin:0">Analizar</button></form>
+      {% endif %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}
